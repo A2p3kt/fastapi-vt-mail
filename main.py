@@ -1,18 +1,38 @@
 # Using Fast API
-from fastapi import FastAPI, HTTPException, Form, File, UploadFile, BackgroundTasks, Header, Depends
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Form,
+    File,
+    UploadFile,
+    BackgroundTasks,
+    Header,
+    Depends,
+)
 from fastapi.responses import JSONResponse
-import asyncio # For handling async concurrency
-import os # For environment variables
+import asyncio  # For handling async concurrency
+import os  # For environment variables
 from io import BytesIO
-from dotenv import load_dotenv # To load .env file
+from dotenv import load_dotenv  # To load .env file
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from typing import List, Any
-import vt # VirusTotal's python library
-from pathlib import Path # handle getting the extension
+import vt  # VirusTotal's python library
+from pathlib import Path  # handle getting the extension
 from werkzeug.utils import secure_filename
 from datetime import datetime
-import uuid #for unique file names
+import uuid  # for unique file names
 import magic
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import (
+    Mail,
+    Attachment,
+    FileContent,
+    FileName,
+    FileType,
+    Disposition,
+    From,
+)
+import base64 # for handling the attachments
 
 # Load environment variables
 load_dotenv()
@@ -26,50 +46,37 @@ ALLOWED_MIME_TYPES = [
     "application/step-file",
     "application/x-step",
     "model/step",
-    "model/stp"
+    "model/stp",
 ]
 
 ALLOWED_EXTENSIONS = [".pdf", ".jpeg", ".jpg", ".png", ".step", ".stp"]
+
 MAX_FILE_SIZE = 10 * 1024 * 1024
+
 MAX_FILES = 3
 
 # Setting up VirusTotal library
 VT_API_KEY = os.getenv("VT_API_KEY")
 VT_BASE_URL = "https://www.virustotal.com/api/v3"
 
-API_KEY = os.getenv("FASTAPI_API_KEY")
-
-# Setting up FastAPI mail service
-conf = ConnectionConfig(
-    MAIL_USERNAME = os.getenv("MAIL_USERNAME"),
-    MAIL_PASSWORD = os.getenv("MAIL_PASSWORD"),
-    MAIL_FROM = os.getenv("MAIL_FROM"),
-    MAIL_PORT = int(os.getenv("MAIL_PORT", 587)),
-    MAIL_SERVER = os.getenv("MAIL_SERVER"),
-    MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME", "Customer Service"),
-    MAIL_STARTTLS = True,
-    MAIL_SSL_TLS = False,
-    USE_CREDENTIALS = True,
-    VALIDATE_CERTS = True
-)
-
-fm = FastMail(conf)
+API_KEY = os.getenv("FAST_API_KEY")
 
 client = vt.Client(VT_API_KEY)
 
 app = FastAPI()
+
 
 # Checks that the call is valid
 def verify_api_key(x_api_key: str = Header(...)):
     if x_api_key != API_KEY:
         raise HTTPException(status_code=403, detail="Unauthorized Call")
 
+
 # -----------------------------------------------
 # 1. Receive the POST request from the front end
 # -----------------------------------------------
-
 @app.post("/submit-form", dependencies=[Depends(verify_api_key)])
-async def handle_submission (
+async def handle_submission(
     background_tasks: BackgroundTasks,
     name: str = Form(...),
     email: str = Form(...),
@@ -78,56 +85,66 @@ async def handle_submission (
     material: str = Form(...),
     quantity: str = Form(...),
     description: str = Form(...),
-    blueprints: List[UploadFile] = File(None)
+    blueprints: List[UploadFile] = File(None),
 ):
     # Ensure that blueprint is an iterable list
     blueprints = [] if not blueprints else blueprints
-    
+
     # Check the number of files attached
     if len(blueprints) > MAX_FILES:
         raise HTTPException(status_code=400, detail="Maximum of 3 files allowed")
-    
+
     processed_files = []
-    
+
     for blueprint in blueprints:
         # 1. First check to verify the file type
         if blueprint.content_type not in ALLOWED_MIME_TYPES:
-            raise HTTPException(status_code=400, detail=f"{blueprint.filename} is not supported")
-        
+            raise HTTPException(
+                status_code=400, detail=f"{blueprint.filename} is not supported"
+            )
+
         # 2. Checking the file extension to verify the file type
         ext = Path(blueprint.filename).suffix.lower()
         if ext not in ALLOWED_EXTENSIONS:
-            raise HTTPException(status_code=400, detail=f"{ext} is not a supported extension")
-        
+            raise HTTPException(
+                status_code=400, detail=f"{ext} is not a supported extension"
+            )
+
         file_content = await blueprint.read()
-        
+
         # 3. Final check using the magic numbers.
-        head = file_content[:2048] # the first 2KB to check for the file signature
+        head = file_content[:2048]  # the first 2KB to check for the file signature
         mime_type = magic.from_buffer(head, mime=True)
         if mime_type not in ALLOWED_MIME_TYPES:
-            raise HTTPException(status_code=400, detail=f"Invalid file type: {mime_type}")
-        
+            raise HTTPException(
+                status_code=400, detail=f"Invalid file type: {mime_type}"
+            )
+
         if len(file_content) > MAX_FILE_SIZE:
-            raise HTTPException(status_code=400, detail=f"{blueprint.filename} is bigger than expected: Max size = 10MB")
-        
-        
+            raise HTTPException(
+                status_code=400,
+                detail=f"{blueprint.filename} is bigger than expected: Max size = 10MB",
+            )
+
         # Sanitizing the filename to ensure it is unique and safe
         filename = secure_filename(blueprint.filename)
         filename = "attachment" if not filename else filename
-        
+
         timestamp = datetime.now().strftime("%Y%m%d%H%M")
-        
+
         filename = f"{timestamp}_{uuid.uuid4().hex}_{filename}"
-            
-        processed_files.append({
-            "filename": filename,
-            "file_content": file_content,
-            "mime_type": blueprint.content_type,
-            "is_clean": None
-        })
-        
+
+        processed_files.append(
+            {
+                "filename": filename,
+                "file_content": file_content,
+                "mime_type": blueprint.content_type,
+                "is_clean": None,
+            }
+        )
+
         await blueprint.close()
-        
+
     customer_data = {
         "name": name,
         "email": email,
@@ -135,27 +152,29 @@ async def handle_submission (
         "company": company,
         "material": material,
         "quantity": quantity,
-        "description": description
+        "description": description,
     }
-    
+
     # Crucial Step: Add the VirusTotal scan and Email function to background tasks
-    # This allows the API to return an immediate success response to the user 
+    # This allows the API to return an immediate success response to the user
     # while the time-consuming tasks (VT scan, polling, email send) run in the background.
     background_tasks.add_task(send_customer_email, customer_data, processed_files)
-    
+
     return JSONResponse(
-        status_code=200, 
-        content={"message": "Form submitted successfully. Files are being scanned and email will be sent shortly."}
+        status_code=200,
+        content={
+            "message": "Form submitted successfully. Files are being scanned and email will be sent shortly."
+        },
     )
-        
-        
+
+
 # -----------------------------------------------
 # 2. VirusTotal API Logic
 # -----------------------------------------------
 async def submit_to_virustotal(file_data: dict[str, Any]):
     file_obj = BytesIO(file_data["file_content"])
     file_obj.name = file_data["filename"]
-    
+
     print(f"Beginning to scan {file_obj.name}")
 
     try:
@@ -176,30 +195,28 @@ async def submit_to_virustotal(file_data: dict[str, Any]):
 # -----------------------------------------------
 # 3. Email sending logic (Background Task)
 # -----------------------------------------------
-async def send_customer_email(customer_info: dict[str, str], files_to_process: List[dict[str, Any]]):
-    
+async def send_customer_email(
+    customer_info: dict[str, str], files_to_process: List[dict[str, Any]]
+):
+
     # for async concurrency
     scanned_files = await asyncio.gather(
         *[submit_to_virustotal(file) for file in files_to_process]
     )
-    
+
     clean_attachments = []
-    unscanned_files = [] # where VirusTotal failed to scan
-    redacted_files = [] # where files where deemed malicious
-    
+    unscanned_files = []  # where VirusTotal failed to scan
+    redacted_files = []  # where files where deemed malicious
+
     for file in scanned_files:
         if file["is_clean"]:
             # Add file as attachment
-            attachment = UploadFile(filename=file["filename"], file=BytesIO(file["file_content"]))
-            clean_attachments.append(attachment)
+            clean_attachments.append(file)
         elif file["is_clean"] is None:
-            attachment = UploadFile(filename=file["filename"], file=BytesIO(file["file_content"]))
-            unscanned_files.append(attachment)
+            unscanned_files.append(file)
         else:
             redacted_files.append(file["filename"])
-            
-    
-        
+
     # Construct the email body text
     redaction_note = ""
     if redacted_files:
@@ -208,7 +225,7 @@ async def send_customer_email(customer_info: dict[str, str], files_to_process: L
             f"were REDACTED due to a failed VirusTotal scan (potential malware detected): "
             f"{', '.join(redacted_files)}.</p>"
         )
-        
+
     unscanned_note = ""
     if unscanned_files:
         unscanned_note = (
@@ -237,18 +254,36 @@ async def send_customer_email(customer_info: dict[str, str], files_to_process: L
     <p>{customer_info['description']}</p>
     """
 
+    # Prepare attachments
+    attachments = []
+    for f in clean_attachments + unscanned_files:
+
+        encoded_content = base64.b64encode(f["file_content"]).decode()
+
+        attachments.append(
+            Attachment(
+                file_content=FileContent(encoded_content),
+                file_name=FileName(f["filename"]),
+                file_type=FileType(f["mime_type"]),
+                disposition=Disposition("attachment"),
+            )
+        )
+
     # Send the Email
-    message = MessageSchema(
-        subject="New Customer Submission with Files",
-        recipients=[os.getenv("RECIPIENT_EMAIL")], # Your email address
-        body=email_body,
-        subtype=MessageType.html,
-        attachments=clean_attachments + unscanned_files # Only includes clean files or totally unscanned files
+    message = Mail(
+        from_email=From(os.getenv("MAIL_FROM"), os.getenv("MAIL_FROM_NAME")),
+        to_emails=os.getenv("RECIPIENT_EMAIL"),
+        subject="Submitting Customer data with attatchments",
+        html_content=email_body,
     )
-    
+
+    for attachment in attachments:
+        message.add_attachment(attachment)
+
     try:
-        await fm.send_message(message)
-        print("Email sent successfully.")
+        sg = SendGridAPIClient(os.getenv("SENDGRID_API_KEY"))
+        response = sg.send(message)
+        print(response.status_code)
+        print("Email sent successfully")
     except Exception as e:
         print(f"Failed to send email: {e}")
-        
