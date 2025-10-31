@@ -10,11 +10,11 @@ from fastapi import (
     Depends,
 )
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import asyncio  # For handling async concurrency
 import os  # For environment variables
 from io import BytesIO
 from dotenv import load_dotenv  # To load .env file
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from typing import List, Any
 import vt  # VirusTotal's python library
 from pathlib import Path  # handle getting the extension
@@ -64,6 +64,14 @@ API_KEY = os.getenv("FAST_API_KEY")
 client = vt.Client(VT_API_KEY)
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Checks that the call is valid
@@ -273,7 +281,7 @@ async def send_customer_email(
     message = Mail(
         from_email=From(os.getenv("MAIL_FROM"), os.getenv("MAIL_FROM_NAME")),
         to_emails=os.getenv("RECIPIENT_EMAIL"),
-        subject="Submitting Customer data with attatchments",
+        subject="New Customer Submission",
         html_content=email_body,
     )
 
