@@ -61,15 +61,17 @@ VT_BASE_URL = "https://www.virustotal.com/api/v3"
 
 API_KEY = os.getenv("FAST_API_KEY")
 
+origin = os.getenv("ALLOWED_ORIGIN").split(",")
+
 client = vt.Client(VT_API_KEY)
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
+    allow_origins=origin,
+    allow_credentials=True,
+    allow_methods=["POST"],
     allow_headers=["*"],
 )
 
