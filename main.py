@@ -241,7 +241,7 @@ async def send_customer_email(
         unscanned_note = (
             f"<p style='color:orange; font-weight:bold;'>⚠️ The following file(s) "
             f"could not be scanned due to a VirusTotal error or connectivity issue: "
-            f"{', '.join(f.filename for f in unscanned_files)}.</p>"
+            f"{', '.join(f['filename'] for f in unscanned_files)}.</p>"
         )
 
     disclaimer = "<p style='font-size:small; color:gray;'>This email contains customer submission information. Please handle with care.</p>"
