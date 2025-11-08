@@ -1,15 +1,15 @@
-# 🧩 Secure File Submission API (FastAPI + VirusTotal + SendGrid)
+# Secure File Submission API (FastAPI + VirusTotal + SendGrid)
 
 This project is a **secure file submission backend** built with **FastAPI**.  
 It allows users to submit a form with attachments that are automatically scanned for viruses using **VirusTotal**, then emailed to an admin using **SendGrid**.
 
 The goal of this API is to safely handle file uploads, prevent malicious file submissions, and automate the notification process — all asynchronously.
 
-For context, this was developed for the a construction company's website quote request submission form
+For context, this was developed for the a construction company's website quote request submission form.
 
 ---
 
-## 🚀 Features
+## Features
 
 - Secure file upload with MIME, extension, and size validation  
 - Asynchronous VirusTotal scanning  
