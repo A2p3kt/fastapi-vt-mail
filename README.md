@@ -31,6 +31,53 @@ For context, this was developed for the a construction company's website quote r
    - Redacts any file flagged as malicious.
 3. The response returns instantly, while scanning and emailing continue in the background.
 
+```mermaid
+graph LR
+    A[User submits form + files] --> B[Validate & Sanitize Files<br/>- Check type, size, count<br/>- Sanitize filename]
+
+    B --> C[Background Task - Async]
+    C --> C2[Prepare email content]
+    C --> C1[Scan files with VirusTotal]
+
+    C1 --> D[File Clean]
+    C1 --> E[File Malicious]
+    C1 --> F[File Unscanned / Scan Failed]
+
+    D --> G[Attach to Email]
+    C2 --> G
+    F --> G
+    E --> H[Redact / Flag]
+
+    G --> I[Send Email to Admin]
+    H --> I
+
+    I --> J[Submission Processed<br/>User sees instant success]
+
+    %% Node Styles
+    style A fill:#4CAF50,stroke:#333,stroke-width:2px,color:#fff
+    style B fill:#2196F3,stroke:#333,stroke-width:2px,color:#fff
+    style C fill:#FFC107,stroke:#333,stroke-width:2px,color:#000
+    style C1 fill:#FFEB3B,stroke:#333,stroke-width:2px
+    style C2 fill:#FFEB3B,stroke:#333,stroke-width:2px
+    style D fill:#8BC34A,stroke:#333,stroke-width:2px,color:#fff
+    style E fill:#F44336,stroke:#333,stroke-width:2px,color:#fff
+    style F fill:#00BCD4,stroke:#333,stroke-width:2px,color:#fff
+    style G fill:#E91E63,stroke:#333,stroke-width:2px,color:#fff
+    style H fill:#9C27B0,stroke:#333,stroke-width:2px,color:#fff
+    style I fill:#607D8B,stroke:#333,stroke-width:2px,color:#fff
+
+    %% Arrow Styles
+    linkStyle 0 stroke:#4CAF50,stroke-width:2px
+    linkStyle 1 stroke:#2196F3,stroke-width:2px
+    linkStyle 2 stroke:#FFC107,stroke-width:2px,stroke-dasharray: 5,5
+    linkStyle 3 stroke:#FFC107,stroke-width:2px,stroke-dasharray: 5,5
+    linkStyle 4 stroke:#8BC34A,stroke-width:2px
+    linkStyle 5 stroke:#F44336,stroke-width:2px,stroke-dasharray: 5,5
+    linkStyle 6 stroke:#00BCD4,stroke-width:2px
+    linkStyle 7 stroke:#E91E63,stroke-width:2px,stroke-dasharray: 5,5
+    linkStyle 8 stroke:#9C27B0,stroke-width:2px
+```
+
 ---
 
 ## Tech Stack
