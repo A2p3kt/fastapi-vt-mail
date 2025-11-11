@@ -82,6 +82,10 @@ MAIL_FROM_NAME=Secure API Bot
 RECIPIENT_EMAIL=admin@example.com
 ```
 
+> [!IMPORTANT]
+>
+> You come up with `FAST_API_KEY` yourself
+
 > [!WARNING]
 >
 > The `.env` file should never be committed to GitHub
