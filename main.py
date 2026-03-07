@@ -22,16 +22,7 @@ from werkzeug.utils import secure_filename
 from datetime import datetime
 import uuid  # for unique file names
 import magic
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import (
-    Mail,
-    Attachment,
-    FileContent,
-    FileName,
-    FileType,
-    Disposition,
-    From,
-)
+import resend  # for sending emails via Resend API
 import base64 # for handling the attachments
 
 # Load environment variables
@@ -60,6 +51,8 @@ VT_API_KEY = os.getenv("VT_API_KEY")
 VT_BASE_URL = "https://www.virustotal.com/api/v3"
 
 API_KEY = os.getenv("FAST_API_KEY")
+
+resend.api_key = os.getenv("RESEND_API_KEY")
 
 origin = os.getenv("ALLOWED_ORIGIN").split(",")
 
@@ -206,21 +199,19 @@ async def submit_to_virustotal(file_data: dict[str, Any]):
 # 3. Email sending logic (Background Task)
 # -----------------------------------------------
 async def send_customer_email(
-    customer_info: dict[str, str], files_to_process: List[dict[str, Any]]
+    customer_info: dict[str, str], files_to_process: list[dict[str, Any]]
 ):
-
-    # for async concurrency
+    # for async concurrency (VirusTotal scanning)
     scanned_files = await asyncio.gather(
         *[submit_to_virustotal(file) for file in files_to_process]
     )
 
     clean_attachments = []
-    unscanned_files = []  # where VirusTotal failed to scan
-    redacted_files = []  # where files where deemed malicious
+    unscanned_files = [] 
+    redacted_files = [] 
 
     for file in scanned_files:
         if file["is_clean"]:
-            # Add file as attachment
             clean_attachments.append(file)
         elif file["is_clean"] is None:
             unscanned_files.append(file)
@@ -232,7 +223,7 @@ async def send_customer_email(
     if redacted_files:
         redaction_note = (
             f"<p style='color:red; font-weight:bold;'>🚨 ATTENTION: The following file(s) "
-            f"were REDACTED due to a failed VirusTotal scan (potential malware detected): "
+            f"were REDACTED due to potential malware: "
             f"{', '.join(redacted_files)}.</p>"
         )
 
@@ -240,60 +231,47 @@ async def send_customer_email(
     if unscanned_files:
         unscanned_note = (
             f"<p style='color:orange; font-weight:bold;'>⚠️ The following file(s) "
-            f"could not be scanned due to a VirusTotal error or connectivity issue: "
+            f"could not be scanned due to a connectivity issue: "
             f"{', '.join(f['filename'] for f in unscanned_files)}.</p>"
         )
 
-    disclaimer = "<p style='font-size:small; color:gray;'>This email contains customer submission information. Please handle with care.</p>"
-
     email_body = f"""
-    {disclaimer}
+    <p style='font-size:small; color:gray;'>This email contains customer submission information.</p>
     {unscanned_note}
     {redaction_note}
-
     <h3>Customer Submission</h3>
-
-    <p><strong>Email:</strong> {customer_info['email']}<br>
-    <strong>Name:</strong> {customer_info['name']}<br>
+    <p><strong>Name:</strong> {customer_info['name']}<br>
+    <strong>Email:</strong> {customer_info['email']}<br>
     <strong>Phone:</strong> {customer_info['phone']}<br>
     <strong>Company:</strong> {customer_info['company']}<br>
     <strong>Material:</strong> {customer_info['material']}<br>
     <strong>Quantity:</strong> {customer_info['quantity']}</p>
-
     <h4>Description</h4>
     <p>{customer_info['description']}</p>
     """
 
-    # Prepare attachments
+    # Prepare attachments for Resend
     attachments = []
     for f in clean_attachments + unscanned_files:
+        # Resend requires the content as a base64 encoded string
+        encoded_content = base64.b64encode(f["file_content"]).decode("utf-8") #
 
-        encoded_content = base64.b64encode(f["file_content"]).decode()
+        attachments.append({
+            "content": encoded_content, #
+            "filename": f["filename"] #
+        })
 
-        attachments.append(
-            Attachment(
-                file_content=FileContent(encoded_content),
-                file_name=FileName(f["filename"]),
-                file_type=FileType(f["mime_type"]),
-                disposition=Disposition("attachment"),
-            )
-        )
-
-    # Send the Email
-    message = Mail(
-        from_email=From(os.getenv("MAIL_FROM"), os.getenv("MAIL_FROM_NAME")),
-        to_emails=os.getenv("RECIPIENT_EMAIL"),
-        subject="New Customer Submission",
-        html_content=email_body,
-    )
-
-    for attachment in attachments:
-        message.add_attachment(attachment)
-
+    # Send the Email using Resend
     try:
-        sg = SendGridAPIClient(os.getenv("SENDGRID_API_KEY"))
-        response = sg.send(message)
-        print(response.status_code)
-        print("Email sent successfully")
+        params = {
+            "from": f"{os.getenv('MAIL_FROM_NAME')} <onboarding@resend.dev>", # Use verified domain later
+            "to": [os.getenv("RECIPIENT_EMAIL")], #
+            "subject": "New Customer Submission", #
+            "html": email_body, #
+            "attachments": attachments #
+        }
+        
+        email_response = resend.Emails.send(params) #
+        print(f"Email sent successfully: {email_response}")
     except Exception as e:
-        print(f"Failed to send email: {e}")
+        print(f"Failed to send email via Resend: {e}")
