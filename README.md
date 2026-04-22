@@ -32,54 +32,61 @@ For context, this was developed for a construction company's website quote reque
 3. The response returns instantly, while scanning and emailing continue in the background.
 
 ```mermaid
-graph LR
-    A[User submits form + files] --> B[Validate & Sanitize Files<br/>- Check type, size, count<br/>- Sanitize filename]
+graph TD
+A([User submits form + files]) --> B
 
-    B --> C[Background Task - Async]
-    C --> C2[Prepare email content]
-    C --> C1[Scan files with VirusTotal]
+subgraph validation["Input Validation"]
+B["Validate & Sanitize Files
+Type · Size · Count · Filename"]
+end
 
-    C1 --> D[File Clean]
-    C1 --> E[File Malicious]
-    C1 --> F[File Unscanned / Scan Failed]
+B --> C
 
-    D --> G2[Base64 Encode File]
-    F --> G2
-    G2 --> G[Attach to Resend Email]
-    C2 --> G
-    E --> H[Redact / Flag]
+subgraph async["Background Task — Async"]
+C(( )) --> C1 & C2
 
-    G --> I[Send Email via Resend API]
-    H --> I
+subgraph scan["Virus Scanning"]
+C1["VirusTotal API"]
+C1 -->|Clean| D["✅ File clean"]
+C1 -->|Malicious| E["🚨 File malicious"]
+C1 -->|Scan failed| F["⚠️ Unscanned"]
+end
 
-    I --> J[Submission Processed<br/>User sees instant success]
+subgraph prepare["Email Preparation"]
+C2["Prepare email content"]
+end
 
-    %% Node Styles
-    style A fill:#4CAF50,stroke:#333,stroke-width:2px,color:#fff
-    style B fill:#2196F3,stroke:#333,stroke-width:2px,color:#fff
-    style C fill:#FFC107,stroke:#333,stroke-width:2px,color:#000
-    style C1 fill:#FFEB3B,stroke:#333,stroke-width:2px
-    style C2 fill:#FFEB3B,stroke:#333,stroke-width:2px
-    style D fill:#8BC34A,stroke:#333,stroke-width:2px,color:#fff
-    style E fill:#F44336,stroke:#333,stroke-width:2px,color:#fff
-    style F fill:#00BCD4,stroke:#333,stroke-width:2px,color:#fff
-    style G2 fill:#FF9800,stroke:#333,stroke-width:2px,color:#fff
-    style G fill:#E91E63,stroke:#333,stroke-width:2px,color:#fff
-    style H fill:#9C27B0,stroke:#333,stroke-width:2px,color:#fff
-    style I fill:#607D8B,stroke:#333,stroke-width:2px,color:#fff
+D & F --> G2["Base64 encode file"]
+E --> H["Redact & flag file"]
+end
 
-    %% Arrow Styles
-    linkStyle 0 stroke:#4CAF50,stroke-width:2px
-    linkStyle 1 stroke:#2196F3,stroke-width:2px
-    linkStyle 2 stroke:#FFC107,stroke-width:2px,stroke-dasharray: 5,5
-    linkStyle 3 stroke:#FFC107,stroke-width:2px,stroke-dasharray: 5,5
-    linkStyle 4 stroke:#8BC34A,stroke-width:2px
-    linkStyle 5 stroke:#F44336,stroke-width:2px,stroke-dasharray: 5,5
-    linkStyle 6 stroke:#00BCD4,stroke-width:2px
-    linkStyle 7 stroke:#FF9800,stroke-width:2px
-    linkStyle 8 stroke:#FF9800,stroke-width:2px
-    linkStyle 9 stroke:#E91E63,stroke-width:2px,stroke-dasharray: 5,5
-    linkStyle 10 stroke:#9C27B0,stroke-width:2px
+subgraph delivery["Email Delivery"]
+G2 & H & C2 --> G["Assemble Resend payload"]
+G --> I["Send via Resend API"]
+end
+
+I --> J([Submission complete])
+
+%% Styles
+style A fill:#4CAF50,color:#fff,stroke:#2E7D32
+style J fill:#4CAF50,color:#fff,stroke:#2E7D32
+style B fill:#1565C0,color:#fff,stroke:#0D47A1
+style C fill:#F9A825,color:#000,stroke:#F57F17
+style C1 fill:#FFF176,color:#000,stroke:#F9A825
+style C2 fill:#FFF176,color:#000,stroke:#F9A825
+style D fill:#66BB6A,color:#fff,stroke:#388E3C
+style E fill:#EF5350,color:#fff,stroke:#C62828
+style F fill:#26C6DA,color:#000,stroke:#00838F
+style G2 fill:#FFA726,color:#fff,stroke:#E65100
+style H fill:#AB47BC,color:#fff,stroke:#6A1B9A
+style G fill:#EC407A,color:#fff,stroke:#AD1457
+style I fill:#546E7A,color:#fff,stroke:#263238
+
+style validation fill:#E3F2FD,stroke:#1565C0,stroke-width:2px,color:#0D47A1
+style async fill:#FFFDE7,stroke:#F9A825,stroke-width:2px,stroke-dasharray:6 3,color:#E65100
+style scan fill:#F1F8E9,stroke:#66BB6A,stroke-width:1px,color:#2E7D32
+style prepare fill:#FFF8E1,stroke:#FFA726,stroke-width:1px,color:#E65100
+style delivery fill:#FCE4EC,stroke:#EC407A,stroke-width:2px,color:#AD1457
 ```
 
 ---
